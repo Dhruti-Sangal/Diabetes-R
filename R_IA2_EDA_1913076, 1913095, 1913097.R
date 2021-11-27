@@ -1,0 +1,147 @@
+library(randomForest)
+library(caret)
+#Loading the dataset 
+dataset=read.delim("https://raw.githubusercontent.com/nirmat/diabetesdataset/main/diabetes_full.csv", stringsAsFactors = FALSE)
+print(head(dataset))
+
+#Dimension
+dim(dataset)
+#Name of columns in the data
+colnames(dataset)
+
+#********************CLEAN THE DATA*********************************
+#printing missing values in each column
+numColumns = dim(dataset)[2]
+vector_NAs = rep(0, numColumns)               
+for (i in 1:numColumns) {
+  vector_NAs[i] = sum(is.na(dataset[,i]))}
+
+print("The missing values in each column:")
+print(vector_NAs)
+
+#we notice row 15 and 16 have way too many missing values so we can remove those because not helpful
+#we can also notice that column 1("id") and column 7("location") provide no helpful information
+h = dataset[,-c(1,7,15,16)]
+print(dim(h))
+#notice only 15 columns remain after removing the 4 columns
+
+#removing any row with missing values
+row.has.na <- apply(h, 1, function(x){any(is.na(x))})
+h = h[!row.has.na,]
+print(dim(h))
+#notice only 366 rows remain
+print(head(h))
+
+h$gender = factor(h$gender)  #making Data nominal
+print(h$gender)
+h$frame = factor(h$frame, levels = c("small", "medium", "large"))  #making Data ordinal
+print(h$frame)
+
+# encode the class label (column 5): Glycosolated hemoglobin  > 7.0 is taken as a positive diagnosis of diabetes.
+glyhb_encoded=h[,c("glyhb")]
+glyhb_encoded = ifelse(glyhb_encoded >= 7.0, 1, 0)
+glyhb_encoded = factor(glyhb_encoded) # class label must be factor type
+h$glyhb_encoded <-  glyhb_encoded
+#************ALL DESCRIPTIVE STATISTICS STARTS HERE********************** 
+
+# display the first 20 rows
+print(head(h, n=20))
+
+# display the dimensions of the dataset
+print(dim(h))
+
+# list types for each attribute
+print(sapply(h,class))
+
+#Data Distribution for stab.glu 
+quantile(h$stab.glu)
+
+#Std dev for all the non categorical columns(all columns except glyhb,gender and frame)
+std=sapply(h[,-c(5,7,10,16)],sd) 
+print('The standard deviations are:')
+print(std)
+
+#Calculating Skewness for all the columns
+library(e1071) #library for skewness
+skew=apply(h[,-c(5,7,10,16)], 2, skewness) 
+print(skew)
+
+#Correlations
+correlations=cor(h[,-c(5,7,10,16)])
+print(correlations)
+
+#Summary of all the columns including Mean,Median, Quartiles etc.
+print(summary(h))
+
+#****************DATA VISUALIZATION STARTS HERE******************************
+h_numeric=h[,-c(5,7,10,16)]
+#Plotting histograms for all columns with non categorical data
+#Histograms
+par(mfrow=c(3,4)) 
+for (i in 1:12) {
+  hist(h_numeric[,i],main=names(h_numeric)[i])
+}
+
+#Density Plots for all columns with non categorical data
+par(mfrow=c(3,4))
+for(i in 1:12) {
+  plot(density(h_numeric[,i]), main=names(h_numeric)[i])
+}
+
+#Box Plots for all columns with non categorical data
+par(mfrow=c(3,4))
+for(i in 1:12) {
+  boxplot(h_numeric[,i], main=names(h_numeric)[i])
+}
+
+#Barplots, which is used to count the occurances for categorical attributes 
+h_categorical = h[,c(16,7,10)]
+par(mfrow=c(1,3))
+for(i in 1:3) {
+  counts <- table(h_categorical[,i]) # get the count for each categorical value
+  name <- names(h_categorical)[i]
+  barplot(counts, main=name)
+}
+
+#Visualizing the data for the stabilized glucose concentration levels in blood which is an important factor 
+#Histogram
+hist(h$stab.glu, xlab = "Stabilized Glucose concentration in blood", main ="", breaks = 50)
+abline(v = summary(h$stab.glu)[2:5], col = c("blue", "red", "black", "orange"), 
+       lty = 2)
+
+#Density Plot
+plot(density(h$stab.glu), xlab = "Stabilized Glucose concentration in blood", 
+     main = "")
+abline(v = summary(h$stab.glu)[2:5], col = c("blue", "red", "black", "orange"), 
+       lty = 2)
+#Box plot
+boxplot(h$stab.glu, xlab = "Stabilized Glucose concentration in blood", horizontal = T)
+abline(v = summary(h$stab.glu)[2:5], col = c("blue", "red", "black", "orange"), 
+       lty = 2)
+
+#***MULTIVARIATE VISUALIZATIONS:****
+#Scatter plot for glyhb levels vs the stabilized glucose levels from the data
+plot(h$stab.glu, h$glyhb, pch = 20, xlab = "Stabilized glucose", ylab = "Glycosylated hemoglobin")
+
+#Compute the Pearson correlation
+cor(h$stab.glu, h$glyhb, method = "pearson")
+
+#Compute the Spearman correlation
+cor(h$stab.glu, h$glyhb, method = "spearman")
+
+#plot for rank of values in stab.glu vs rank of values in glyhb
+plot(rank(h$stab.glu), rank(h$glyhb), pch = 8, xlab = "Ranks Stabilized glucose", 
+     ylab = "Ranks Glycosylated hemoglobin")
+
+#PAIRWISE SCATTERPLOT
+cor.mat = cor(h[,-c(6,7,10,15,16)], method = "pearson") #removing discrete and categorical data
+round(cor.mat, 2)  # all pairwise correlations
+par(mar = c(3, 3, 0.5, 0.5), mgp = c(1.5, 0.5, 0), las = 2)
+pairs(h[,-c(6,7,10,15,16)], pch = 20, cex = 0.5, col = "grey")
+
+#CORRELATION PLOT
+library(corrplot) # for function corrplot()
+correlations1=cor(h_numeric)
+print(correlations1)
+par(mfrow=c(1,1))
+corrplot(correlations1)

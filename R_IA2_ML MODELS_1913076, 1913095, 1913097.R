@@ -1,0 +1,93 @@
+library(randomForest)
+library(caret)
+
+#load the data
+data=read.delim("https://raw.githubusercontent.com/nirmat/diabetesdataset/main/diabetes_full.csv", stringsAsFactors = FALSE)
+print(head(data))
+
+#cleaning the data
+numCol=dim(data)[2]
+vect_NAs=rep(0,numCol)
+for (i in 1:numCol){
+  vect_NAs[i]=sum(is.na(data[,i]))
+}
+print("Missing values in each columns are: ")
+print(vect_NAs)
+
+#after observing we delete column 15,16 because of too many missing values
+#if u look closely column 1 and column 7 (id and location) can be deleted because the dont provide any real value
+data1=data[,-c(1,7,15,16)]
+print(dim(data1))
+
+#now we remove row with missing values
+row.has.na <- apply(data1, 1, function(x){any(is.na(x))})
+data1 = data1[!row.has.na,]
+print(dim(data1))
+print(head(data1))
+
+#encode (column 5): Glycosolated hemoglobin > 7.0 because it is taken as a positive diagnosis for diabetes
+data1[,5]=ifelse(data1[,5] >= 7.0, 1, 0)
+# class label must be factor type
+data1[,5] = factor(data1[,5])
+
+#now we can encode the categorical data, in this case the gender and frame
+#encoding column 7=gender
+data1[,7] = ifelse(data1[,7] == "male", 1, 0)
+data1[,7] = factor(data1[,7])
+
+#encoding column 10=frame
+data1[,10] = ifelse(data1[,10] == "small", 0, ifelse(data1[,10] == "medium", 1,2) )
+data1[,10] = factor(data1[,10])
+
+#now we need to split the data into training and test sets
+set.seed(7)
+test_index = createDataPartition(data1$glyhb, p=0.90, list=FALSE)
+testData = data1[-test_index,]
+trainData= data1[test_index,]
+
+
+#using different methods and comparing between the classifiers
+
+#1. Logistic Regression:
+set.seed(7)
+control.glm = trainControl(method = "cv", number = 5)
+fit.glm = train(glyhb~., data = trainData, method = "glm", preProc = c("center","scale"), trControl = control.glm)
+print(fit.glm$results) #accuracy 91.18%
+
+#2. SVM:
+set.seed(7)
+control.svmRadial = trainControl(method = "cv", number = 5)
+fit.svmRadial <- train(glyhb~., data=trainData, method="svmRadial", metric="Accuracy", preProc=c("center","scale"), trControl=control.svmRadial)
+# summarize fit
+print(fit.svmRadial$results) #accuracy 90.09%
+
+#3. Random Forest:
+set.seed(7)
+control.rf = trainControl(method="cv", number=5)
+metric = "Accuracy"
+mtry = 7 # mtry=7 (number of variables to try)
+tunegrid <- expand.grid(.mtry=mtry)
+fit.rf_default <- train(glyhb~., data=trainData, method="rf", metric=metric, tuneGrid=tunegrid, preProc=c("center","scale"), trControl=control.rf)
+print(fit.rf_default$results)
+
+#4. parameter tuning via grid search for random forest
+control.rf_search <- trainControl(method="repeatedcv", number=5, repeats=3, search="grid")
+set.seed(7)
+tunegrid <- expand.grid(.mtry=c(1:15))
+fit.rf_gridsearch <- train(glyhb~., data=trainData, method="rf", metric=metric, tuneGrid=tunegrid, trControl=control.rf_search, ntree=1000)
+print(fit.rf_gridsearch)#mtry 8 with 91.1% accuracy chosen
+print(fit.rf_gridsearch$finalModel)
+plot(fit.rf_gridsearch) 
+
+# make predictions on the test set
+set.seed(7)
+predictions = predict(fit.rf_gridsearch, newdata=testData)
+confusionMatrix = confusionMatrix(predictions, testData$glyhb)
+#Printing Confusion matrix for our predictions
+print(confusionMatrix$table)#only 3 false negatives and 0 false positives
+
+# save the final classifier model for random forest into disk
+saveRDS(fit.rf_gridsearch, "C:\\Users\\Public\\diabetes_classification")
+
+final_model <- readRDS("C:\\Users\\Public\\diabetes_classification")
+print(final_model)
